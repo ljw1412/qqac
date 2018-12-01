@@ -9,7 +9,9 @@ const fsReadFile = util.promisify(fs.readFile)
 const fsLstat = util.promisify(fs.lstat)
 const fsWriteFile = util.promisify(fs.writeFile)
 
-let directory
+let directory,
+  errorCount = 0,
+  successCount = 0
 
 program
   .version('1.0.0')
@@ -20,7 +22,7 @@ program
 directory = program.directory
 
 // 输入文件名
-const inputDirectory = async () => {
+async function inputDirectory() {
   if (!directory) {
     directory = await inquirer
       .prompt({
@@ -114,7 +116,7 @@ async function parseImage1(dirPath, fileListInDir, imageList) {
     if (['cinfo', 'dinfo', '_image_info_list'].includes(file)) {
       continue
     }
-    console.log(`[RUNNING]开始解析:${file}`)
+    // console.log(`[RUNNING]开始解析:${file}`)
     image = await fsReadFile(path.join(dirPath, file))
     // 截取图片文件中的请求下载地址
     const urlStartIndex = image.indexOf('http')
@@ -124,7 +126,7 @@ async function parseImage1(dirPath, fileListInDir, imageList) {
     // 查找该图片对应的页数
     const imageBean = imageList.find(item => item.url === imageUrl)
     if (!imageBean) {
-      console.log('[error]' + path.join(dirPath, file) + '解析失败')
+      console.log('\x1B[33m[error]' + path.join(dirPath, file) + '解析失败')
       continue
     }
     await saveImageFile(imageBean.index, dirPath, image)
@@ -158,11 +160,16 @@ async function saveImageFile(index, dirPath, image) {
 async function writeImage(dirName, filename, image) {
   const output = path.join('output', title, dirName, filename)
   mkdirsSync(path.dirname(output))
-  await fsWriteFile(output, image)
+  await fsWriteFile(output, image, { flag: 'wx' })
     .then(() => {
+      successCount++
       console.log('[success]' + output)
     })
-    .catch(() => console.log('\x1B[33m[fail]' + output))
+    .catch(err => {
+      if (err.code === 'EEXIST') return
+      errorCount++
+      console.log('\x1B[33m[fail]' + output)
+    })
 }
 
 // 解析章节
@@ -172,7 +179,7 @@ async function parseChapter() {
     const filePath = path.join(directory, file)
     const stats = await fsLstat(filePath)
     if (stats.isDirectory()) {
-      parseChapterInfo(filePath)
+      await parseChapterInfo(filePath)
     }
   }
 }
@@ -192,6 +199,7 @@ const start = async () => {
   }
   await parseBookinfo()
   await parseChapter()
+  console.log(`成功:${successCount},失败${errorCount}`)
 }
 
 start()
